@@ -12,15 +12,63 @@ from . import containers
 class TestRunner:
     """Orchestrates the execution of tests and interpretation of outcomes."""
 
-    def run_single_test(self, container_id, dst_ip, protocol, dst_port):
+    def _list_open_ports(self, port:str, protocol: str, container_id: str) -> bool:
+        """
+        Checks if there is a open port on container, checking port and protocol.
+
+        Args:
+            port (str): The port to be tested.
+            protocol (str): The protocol to use (TCP, UDP).
+            container_id (str): The ID of the source container.
+
+        Returns:
+            boolean: Returns true if there is a port open on container, otherwise, returns false
+        """
+
+        # filter tcp: ss -tln | grep <port>
+        # filter upd: ss -uln | grep <port>
+
+        if protocol.lower() == "tcp":
+            flag = "-tln"
+        else:
+            flag = "-uln"
+
+        check_port_command = f"ss {flag} | grep {port}"
+
+        docker_command = [
+            "docker", "exec", container_id,
+            "sh", "-c", check_port_command
+        ]
+
+        try:
+            result = subprocess.run(docker_command, capture_output=True, text=True, encoding='utf-8', timeout=10)
+            
+            if result.returncode != 0 or (not result.stdout):
+                print("erro1")
+                return False
+            
+            return True
+
+        except Exception as e:
+            error_msg = str(e)
+            if hasattr(e, 'stderr') and e.stderr:
+                error_msg = e.stderr.strip()
+            
+            print(f"Error TestRunner: {error_msg}", file=sys.stderr)
+            sys.stderr.flush()
+            error_result = {"status": "1", "status_msg": f"Execution Error: {error_msg}"}
+            return False, error_result
+
+    def run_single_test(self, container_id_src, dst_ip, protocol, dst_port, container_id_dest):
         """
         Runs a single client test inside a container and returns the result.
 
         Args:
-            container_id (str): The ID of the source container.
+            container_id_src (str): The ID of the source container.
             dst_ip (str): The destination IP address or hostname.
             protocol (str): The protocol to use (TCP, UDP, ICMP).
             dst_port (str): The destination port.
+            container_id_dest: The ID of the destination container
 
         Returns:
             tuple: A tuple containing a boolean for success and a dictionary
@@ -33,10 +81,20 @@ class TestRunner:
             sys.stderr.flush()
             return False, error_result
 
+        if(protocol.lower() != 'icmp'):
+            is_port_open = self._list_open_ports(dst_port,protocol, container_id_dest)
+            if not is_port_open:
+                result_dict_warn = {
+                    "status": "warning",
+                    "status_msg": "port is not open on destination container"
+                }
+                return False, result_dict_warn
+
         command = [
-            "docker", "exec", container_id,
+            "docker", "exec", container_id_src,
             "python3",
-            "/firewallTester/src/client.py",
+            # "/firewallTester/src/client.py",
+            "core/client.py",
             processed_dst_ip,
             protocol.lower(),
             dst_port,

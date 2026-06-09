@@ -14,6 +14,8 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushBut
     QAbstractItemView, QProgressDialog, QMessageBox, QFileDialog, QDialog)
 from PyQt5.QtGui import QColor, QBrush
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QEvent
+import time
+from .widgets.loading_bar import LoadingBar
 
 class TestWorker(QObject):
     """A worker that runs firewall tests in a separate thread."""
@@ -27,6 +29,7 @@ class TestWorker(QObject):
         self.test_runner = test_runner
         self.hosts_map = hosts_map 
         self.is_cancelled = False
+
     def run(self):
         """Executes the test items and emits signals for progress and results."""
         total = len(self.test_items)
@@ -43,6 +46,8 @@ class TestWorker(QObject):
             
             destination_ip = dst_hostname
             clean_name = dst_hostname.split(' (')[0].strip()
+
+            container_id_destination = self.hosts_map.get(dst_hostname, {}).get('id')
             
             found = False
             for data in self.hosts_map.values():
@@ -55,13 +60,12 @@ class TestWorker(QObject):
 
             effective_port = "1" if proto.upper() == "ICMP" else dst_port
 
-            _, result_dict = self.test_runner.run_single_test(container_id, destination_ip, proto, effective_port)
-            
+            _, result_dict = self.test_runner.run_single_test(container_id, destination_ip, proto, effective_port, container_id_destination)
+
             if self.is_cancelled:
                 break
             
             expected_back= "yes" if expected == "Allowed" else "no"
-            
             analysis, tag = self.test_runner.analyze_test_result(expected_back, result_dict)
             self.item_tested.emit(item, analysis, tag)
             
@@ -80,7 +84,7 @@ class FirewallTestsTab(QWidget):
     # where widgets are stored as instance attributes for later access.
     # R0903: This class has few public methods as it's primarily a display
     # widget updated by the main window, which is an acceptable design.
-    def __init__(self, test_runner, hosts_data, config, parent=None):
+    def __init__(self, test_runner, hosts_data, config, container_manager,parent=None):
         super().__init__(parent)
         self.test_runner = test_runner
         self.hosts_data = hosts_data
@@ -88,6 +92,7 @@ class FirewallTestsTab(QWidget):
         self.config = config
         self.save_file_path = None
         self.is_editing = False
+        self.container_manager = container_manager
 
         # W0201: Initialize thread-related attributes to None
         self.progress_dialog = None
@@ -215,21 +220,65 @@ class FirewallTestsTab(QWidget):
             return
         item = selected_items[0]
 
-        _, container_id, _, dst_hostname, proto, _, dst_port, expected, _, _, _ = [
+        _, container_id_src, _, dst_hostname, proto, _, dst_port, expected, _, _, _ = [
             item.text(c) for c in range(item.columnCount())
         ]
         
         destination_ip = self._find_ip_by_hostname(dst_hostname)
         
         effective_port = "1" if proto.upper() == "ICMP" else dst_port
+
+        container_id_destination = self.hosts_map.get(dst_hostname, {}).get('id')
         
-        _, result_dict = self.test_runner.run_single_test(container_id, destination_ip, proto, effective_port)
+        _, result_dict = self.test_runner.run_single_test(container_id_src, destination_ip, proto, effective_port, container_id_destination)
         
+        if result_dict['status'] == 'warning' and result_dict['status_msg'] == 'port is not open on destination container':
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Info")
+            msg.setText(f"The port is not open on destination host({dst_hostname}). Would you like to open this port on the host?")
+            msg.setIcon(QMessageBox.Information)
+            msg.addButton("Yes", QMessageBox.AcceptRole)
+            msg.addButton("No", QMessageBox.RejectRole)
+            result = msg.exec_()
+            if result == QMessageBox.AcceptRole:
+                result, msg = self._add_port_on_server(container_id_destination, proto, effective_port)
+                if not result: 
+                    QMessageBox.warning(self, "Error", "Error while open port on server")
+                    print(f"Error while open port on server {dst_hostname}")
+                    print(msg)
+                else: 
+                    popup = LoadingBar(title="Wait", message=f"Adding port on host {dst_hostname}")
+                    popup.exec_()
+                    self._run_selected_test()
+                    return
+
+
         expected_back = "yes" if expected == "Allowed" else "no"
         analysis, tag = self.test_runner.analyze_test_result(expected_back, result_dict)
 
         self._paint_test_result(item, analysis, tag)
         
+    def _add_port_on_server(self, container_id: str, protocol: str, port: str): 
+        '''
+        Add a new port on container specified.
+
+        Args:
+            container_id (str): The ID of the server container.
+            protocol (str): The protocol to use (TCP, UDP).
+            port (str): The port to be opened.
+
+        Returns:
+            tuple: A tuple containing a boolean indicating success and a message.
+        '''
+        ports_on_host = self.container_manager.get_host_ports(container_id)
+        ports_on_host.append((protocol,port))
+
+        local_path = self.config.get("server_ports_file")
+        print("!&*(!&((@&*@ finalizou abertura porta !!!@!@!@")
+        print(f"container_id: {container_id}")
+        return self.container_manager.update_host_ports(container_id, ports_on_host, local_path)
+
+    
     def _paint_test_result(self, item, analysis_dict, tag):
         print(f"\nResult: {analysis_dict['result']}")
         print(f"Container ID: {item.text(1)}")
@@ -407,7 +456,7 @@ class FirewallTestsTab(QWidget):
         self.protocol_combo.setCurrentText(item.text(4))
         self.dst_port_entry.setText(item.text(6))
         
-        if item.text(7).lower() == "Allowed":
+        if item.text(7).lower() == "allowed":
             self.expected_yes_radio.setChecked(True)
         else:
             self.expected_no_radio.setChecked(True)
