@@ -294,3 +294,50 @@ class ContainerManager:
             return (False, f"Server restart failed:\n{msg}")
         
         return (True, "Ports updated and server restarted.")
+
+    def _get_port_from_container(self, container_id):
+        """
+        Get open ports from a container.
+
+        Args:
+            container_id: ID from container.
+        """
+        print(f"Get ports from container - {container_id}")
+
+        net_command = (
+            " netstat -atuln | awk '$1 ~ /^(tcp|udp)$/ {split($4, a, \":\"); "
+            "print $1 \"/\" a[2]}' | sort -t '/' -k 2n"
+        )
+        command = "docker exec "+container_id+net_command
+        
+        result = subprocess.run(command, shell=True, capture_output=True, text=True, check=False)
+
+        if result.returncode == 0:
+            # Processes output to get protocol and port
+            ports = []
+            for linha in result.stdout.splitlines():
+                if '/' in linha:
+                    protocol, port = linha.split('/')
+                    ports.append((protocol.upper(), int(port)))  # Add to list as tuple
+            return ports
+
+    def check_port_open(self, container_id: str, dst_port:str, protocol: str):
+        """
+        Checks if a specific port is open in a container.
+
+        Args:
+            container_id (str): The ID of the container to check.
+            dst_port (int): The destination port to check.
+            protocol (str): The protocol to use (TCP, UDP).
+        """
+        print("start check_port_open")
+
+        ports_from_container = self._get_port_from_container(container_id)
+
+        port_protocol = (protocol.upper(),int(dst_port))
+        print ("ports_from_container")
+        print (ports_from_container)
+
+        print(f"port_protocol: {port_protocol}")
+        print("finish check_port_open")
+        return port_protocol in ports_from_container

@@ -304,11 +304,61 @@ class FirewallTestsTab(QWidget):
         
         self._paint_test_result(item, analysis_dict, tag)
 
+    def _check_ports_server(self, list_test):
+        """ Check if there are any ports on the server that are not open."""
+
+        ports_not_open = {}
+
+        for item in list_test:
+             _, _, _, dst_hostname, proto, _, dst_port, _, _, _, _ = [
+                item.text(c) for c in range(item.columnCount())
+            ]
+             if proto.upper() != "ICMP":
+                container_id_destination = self.hosts_map.get(dst_hostname, {}).get('id')
+                result = self.container_manager.check_port_open(container_id_destination, dst_port, proto)
+                if not result:
+                    if container_id_destination in ports_not_open:
+                        # caso esteja aqui, só incrementa a lista existente
+                        ports_not_open[container_id_destination].append((proto, int(dst_port)))
+                    else:
+                        # cria uma nova lista com a tupla contendo o protocolo + porta
+                        ports_not_open[container_id_destination] = [(proto, int(dst_port))]
+
+            
+        print(f"RESULTADO!!!!!!!!!!!: {ports_not_open}")
+        return ports_not_open
+
+    def _open_ports_on_servers(self, servers_and_ports_to_open):
+        """ Open the ports on the servers that are not open."""
+        for container_id, ports in servers_and_ports_to_open.items():
+            for proto, port in ports:
+                result, msg = self._add_port_on_server(container_id, proto, str(port))
+                if not result: 
+                    QMessageBox.warning(self, "Error", f"Error while open port {port} on server {container_id}")
+                    print(f"Error while open port {port} on server {container_id}")
+                    print(msg)
+
     def _run_all_tests(self):
         tests_to_run = [self.tree.topLevelItem(i) for i in range(self.tree.topLevelItemCount())]
         if not tests_to_run:
             print("No tests to run.")
             return
+        
+        result_check_ports_not_open = self._check_ports_server(tests_to_run)
+        if(result_check_ports_not_open):
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Info")
+            msg.setText(f"Existem portas não abertas em alguns hosts. Gostaria de abrir estas portas antes de executar os testes?")
+            msg.setIcon(QMessageBox.Information)
+            msg.addButton("Yes", QMessageBox.AcceptRole)
+            msg.addButton("No", QMessageBox.RejectRole)
+            result = msg.exec_()
+            if result == QMessageBox.AcceptRole:
+                print("aceitou")
+                self._open_ports_on_servers(result_check_ports_not_open)
+                popup = LoadingBar(title="Wait", message=f"Adding port on hosts", time=3000)
+                popup.exec_()
+            
         
         self.tree.clearSelection()
         self.progress_dialog = DraggableDialog("Running tests", "Cancel", 0, 100, self)
