@@ -274,6 +274,7 @@ class FirewallTestsTab(QWidget):
         port_to_open = (protocol.upper(), port)
 
         if port_to_open in ports_on_host:
+            # if port is already on ports.config file, just restart server
             self.container_manager.stop_server(container_id)
             self.container_manager.start_server(container_id)
             return (True, "port already on config file")
@@ -281,7 +282,6 @@ class FirewallTestsTab(QWidget):
         ports_on_host.append(port_to_open)
 
         local_path = self.config.get("server_ports_file")
-        print("!&*(!&((@&*@ finalizou abertura porta !!!@!@!@")
         print(f"container_id: {container_id}")
         return self.container_manager.update_host_ports(container_id, ports_on_host, local_path)
 
@@ -332,7 +332,6 @@ class FirewallTestsTab(QWidget):
                         ports_not_open[container_id_destination] = [(proto, int(dst_port))]
 
             
-        print(f"RESULTADO!!!!!!!!!!!: {ports_not_open}")
         return ports_not_open
 
     def _open_ports_on_servers(self, servers_and_ports_to_open):
@@ -355,7 +354,7 @@ class FirewallTestsTab(QWidget):
         if(result_check_ports_not_open):
             msg = QMessageBox(self)
             msg.setWindowTitle("Info")
-            msg.setText(f"Existem portas não abertas em alguns hosts. Gostaria de abrir estas portas antes de executar os testes?")
+            msg.setText(f"There are unopened ports on some hosts. Would you like to open these ports before running the tests?")
             msg.setIcon(QMessageBox.Information)
             msg.addButton("Yes", QMessageBox.AcceptRole)
             msg.addButton("No", QMessageBox.RejectRole)
@@ -363,7 +362,7 @@ class FirewallTestsTab(QWidget):
             if result == QMessageBox.AcceptRole:
                 print("aceitou")
                 self._open_ports_on_servers(result_check_ports_not_open)
-                popup = LoadingBar(title="Wait", message=f"Adding port on hosts", time=6000)
+                popup = LoadingBar(title="Wait", message=f"Adding port on hosts", time=3000)
                 popup.exec_()
             
         
