@@ -213,6 +213,11 @@ def server_udp(port):
     host = '0.0.0.0'
     protocol = 'udp'
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    except OSError:
+        pass
     sock.bind((host, port))  # Bind to local address and port
 
     while True:
@@ -252,6 +257,11 @@ def start_server(host, protocol, port):
     if protocol == "tcp":
         try:
             server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            except OSError:
+                pass
             server_socket.bind((host, port))
             server_socket.listen(1)
             print(f"\t++ Listening on port  {protocol.upper()}/{port}")

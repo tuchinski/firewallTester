@@ -289,6 +289,7 @@ class ContainerManager:
 
         print(f"Restarting server in {host_id} to install new doors...")
         self.stop_server(host_id)
+        time.sleep(0.5)
         start_success, msg = self.start_server(host_id)
         if not start_success:
             return (False, f"Server restart failed:\n{msg}")

@@ -271,7 +271,14 @@ class FirewallTestsTab(QWidget):
             tuple: A tuple containing a boolean indicating success and a message.
         '''
         ports_on_host = self.container_manager.get_host_ports(container_id)
-        ports_on_host.append((protocol,port))
+        port_to_open = (protocol.upper(), port)
+
+        if port_to_open in ports_on_host:
+            self.container_manager.stop_server(container_id)
+            self.container_manager.start_server(container_id)
+            return (True, "port already on config file")
+
+        ports_on_host.append(port_to_open)
 
         local_path = self.config.get("server_ports_file")
         print("!&*(!&((@&*@ finalizou abertura porta !!!@!@!@")
@@ -356,7 +363,7 @@ class FirewallTestsTab(QWidget):
             if result == QMessageBox.AcceptRole:
                 print("aceitou")
                 self._open_ports_on_servers(result_check_ports_not_open)
-                popup = LoadingBar(title="Wait", message=f"Adding port on hosts", time=3000)
+                popup = LoadingBar(title="Wait", message=f"Adding port on hosts", time=6000)
                 popup.exec_()
             
         
