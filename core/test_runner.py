@@ -63,7 +63,18 @@ class TestRunner:
             return False, error_result
 
     def _server_log_confirms_packet(self, log_path, test_id, protocol, server_ip=None, server_port=None):
-        """Checks whether the server log contains an entry for the packet."""
+        """Checks whether the server log contains an entry for the packet.
+
+        Args:
+            log_path (str): The path to the server log file.
+            test_id (str): The unique identifier of the test.
+            protocol (str): The protocol to check (TCP, UDP).
+            server_ip (str, optional): The server IP address to filter by. Defaults to None.
+            server_port (int, optional): The server port to filter by. Defaults to None.
+
+        Returns:
+            bool: True if the packet entry is found in the log with matching criteria, False otherwise.
+        """
         try:
             with open(log_path, "r", encoding="utf-8") as handle:
                 log_data = json.load(handle)
@@ -95,7 +106,24 @@ class TestRunner:
             client_port=None,
             wait_seconds=1
         ):
-        """Reads the server log from a container and checks whether the packet arrived."""
+        """Reads the server log from a container and checks whether the packet arrived.
+        Args:
+            container_id (str): The ID of the destination container to query.
+            timestamp_teste (str): The timestamp directory containing the server log.
+            test_id (str): The unique identifier of the test packet.
+            protocol (str): The protocol to check (TCP, UDP, ICMP).
+            server_ip (str, optional): The server IP address to filter by. Defaults to None.
+            server_port (int, optional): The server port to filter by. Defaults to None.
+            client_ip (str, optional): The client IP address to filter by. Defaults to None.
+            client_port (str, optional): The client port to filter by. Defaults to None.
+            wait_seconds (int, optional): Maximum time to wait for the packet in seconds. Defaults to 1.
+
+        Returns:
+            tuple: A tuple of (bool, str) where:
+                - bool: True if packet was found and received, False otherwise.
+                - str: A descriptive message explaining the result (e.g., "Received by the server",
+                       "TCP SYN received on server", or empty string if packet not found).
+        """
         log_path = f"log/{timestamp_teste}/server_log.json"
         deadline = time.monotonic() + wait_seconds
 

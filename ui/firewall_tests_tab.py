@@ -308,7 +308,15 @@ class FirewallTestsTab(QWidget):
         self._paint_test_result(item, analysis_dict, tag)
 
     def _check_ports_server(self, list_test):
-        """ Check if there are any ports on the server that are not open."""
+        """Check whether the destination hosts in a test list have the required ports open.
+
+        Args:
+            list_test (list[QTreeWidgetItem]): A list of test items selected in the UI.
+
+        Returns:
+            dict: A mapping where each destination container ID maps to a list of
+                  (protocol, port) tuples for ports that are not open on that container.
+        """
 
         ports_not_open = {}
 
@@ -331,7 +339,19 @@ class FirewallTestsTab(QWidget):
         return ports_not_open
 
     def _open_ports_on_servers(self, servers_and_ports_to_open):
-        """ Open the ports on the servers that are not open."""
+        """Open missing ports on destination server containers.
+
+        Args:
+            servers_and_ports_to_open (dict): A dictionary mapping a destination container ID
+                                             to a list of (protocol, port) tuples that must be opened.
+
+        Returns:
+            None
+
+        Side effects:
+            Attempts to open the configured ports by updating the host port configuration
+            via the container manager. If an update fails, shows a warning dialog.
+        """
         for container_id, ports in servers_and_ports_to_open.items():
             for proto, port in ports:
                 result, msg = self._add_port_on_server(container_id, proto, str(port))
