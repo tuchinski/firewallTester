@@ -16,6 +16,7 @@ import json
 import os
 import time
 import sys
+import uuid
 from datetime import datetime
 
 from scapy.all import IP, ICMP, sr1
@@ -68,12 +69,33 @@ parser = argparse.ArgumentParser(description="Firewall Tester Client (UDP/TCP/IC
 parser.add_argument("server_host", type=str, help="Server IP address")
 parser.add_argument("protocol", type=str.lower, help="Protocol used: TCP/UDP/ICMP")
 parser.add_argument("server_port", type=int, help="Server Port")
-parser.add_argument("testId", type=int, help="Test ID")
+parser.add_argument("testId", type=str, help="Test ID")
 parser.add_argument("timestamp", type=str, help="Timestamp of Test")
 parser.add_argument("verbose", type=int, help="Level of verbosity (0, 1, 2)")
 
 args = parser.parse_args()
 verbose = args.verbose
+
+# Normalize/validate testId: accept integer strings or UUID4
+def _normalize_test_id(tid):
+    # allow numeric ids
+    try:
+        int(tid)
+        return str(tid)
+    except Exception:
+        pass
+
+    try:
+        u = uuid.UUID(tid)
+        if u.version == 4:
+            return str(u)
+    except Exception:
+        pass
+
+    # if not int or uuid4, keep as-is
+    return str(tid)
+
+args.testId = _normalize_test_id(args.testId)
 
 # Initializing socket according to protocol.
 client_sock = None
@@ -85,6 +107,7 @@ if args.protocol.lower() == "udp" or args.protocol.lower() == "UDP":
     client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     client_sock.bind(("", 0))
     client_sock.settimeout(2)
+    # client_ip = client_sock.getsockname()[0]
     client_port = client_sock.getsockname()[1]
 
 elif args.protocol.lower() == "tcp" or args.protocol.lower() == "TCP":
@@ -92,6 +115,7 @@ elif args.protocol.lower() == "tcp" or args.protocol.lower() == "TCP":
     client_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client_sock.bind(("", 0))
     client_sock.settimeout(2)
+    # client_ip = client_sock.getsockname()[0]
     client_port = client_sock.getsockname()[1]
 
 
@@ -134,7 +158,7 @@ message = {
     "timestamp_send": timestamp,
     "timestamp_recv": timestamp,
     "client_host": client_host,
-    "client_ip": client_ip,
+    # "client_ip": client_ip,
     "client_port": client_port,
     "server_ip": args.server_host,
     "server_port": args.server_port,
@@ -178,12 +202,18 @@ try:
         message["status_msg"] = "Error by using destination IP 0.0.0.0"
     else:
         if args.protocol == "udp":
+            client_sock.connect(server_address)
+            client_ip = client_sock.getsockname()[0]  # getting IP used to do the request 
+            message["client_ip"] = client_ip
+            json_message = json.dumps(message, indent=4) # updating message to be send to server
             client_sock.sendto(json_message.encode(), server_address)
         else:  # TCP
             client_sock.connect(server_address)
+            client_ip = client_sock.getsockname()[0] # getting IP used to do the request
+            message["client_ip"] = client_ip
+            json_message = json.dumps(message, indent=4) # updating message to be send to server
             client_sock.send(json_message.encode())
             # retrieves the IP address of the client that was actually used in the transmission.
-            client_ip = client_sock.getsockname()[0]
         
         try:
             response, _ = client_sock.recvfrom(1024) if args.protocol == "udp" else (client_sock.recv(1024), None)

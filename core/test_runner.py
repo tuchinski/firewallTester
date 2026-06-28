@@ -4,10 +4,14 @@ executing individual firewall tests and analyzing their results.
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
+import time
+import uuid
 from . import containers
+import uuid
 
 class TestRunner:
     """Orchestrates the execution of tests and interpretation of outcomes."""
@@ -58,6 +62,99 @@ class TestRunner:
             error_result = {"status": "1", "status_msg": f"Execution Error: {error_msg}"}
             return False, error_result
 
+    def _server_log_confirms_packet(self, log_path, test_id, protocol, server_ip=None, server_port=None):
+        """Checks whether the server log contains an entry for the packet."""
+        try:
+            with open(log_path, "r", encoding="utf-8") as handle:
+                log_data = json.load(handle)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return False
+
+        for entry in log_data.get("received", []):
+            if str(entry.get("id", "")) != str(test_id):
+                continue
+            if str(entry.get("protocol", "")).upper() != str(protocol).upper():
+                continue
+            if server_ip and str(entry.get("server_ip", "")) and str(entry.get("server_ip")) != str(server_ip):
+                continue
+            if server_port is not None and entry.get("server_port") is not None and int(entry.get("server_port")) != int(server_port):
+                continue
+            return bool(entry.get("packet_arrived", True))
+
+        return False
+
+    def _server_log_confirms_packet_in_container(
+            self,
+            container_id,
+            timestamp_teste,
+            test_id,
+            protocol,
+            server_ip=None,
+            server_port=None,
+            client_ip=None,
+            client_port=None,
+            wait_seconds=1
+        ):
+        """Reads the server log from a container and checks whether the packet arrived."""
+        log_path = f"log/{timestamp_teste}/server_log.json"
+        deadline = time.monotonic() + wait_seconds
+        print("start _server_log_confirms_packet_in_container")
+
+        while time.monotonic() < deadline:
+            docker_command = ["docker", "exec", container_id, "sh", "-c", f"cat {log_path} 2>/dev/null || true"]
+            try:
+                result = subprocess.run(docker_command, capture_output=True, text=True, encoding="utf-8", timeout=10)
+            except Exception:
+                result = None
+
+            if result and result.returncode == 0 and result.stdout.strip():
+                try:
+                    log_data = json.loads(result.stdout)
+                except json.JSONDecodeError:
+                    log_data = {"received": []}
+
+                for entry in log_data.get("received", []):
+                    if str(entry.get("id", "")) != str(test_id):
+                        continue
+                    if str(entry.get("protocol", "")).upper() != str(protocol).upper():
+                        continue
+                    if server_ip and str(entry.get("server_ip", "")) and str(entry.get("server_ip")) != str(server_ip):
+                        continue
+                    if server_port is not None and entry.get("server_port") is not None and int(entry.get("server_port")) != int(server_port):
+                        continue
+                    return (True, "Received by the server")
+
+            time.sleep(0.2)
+        print("saiu do while")
+        print(f"protocol: {protocol}")
+        if protocol.lower() == 'tcp':
+            print("entrou no ifzera")
+            path_syn_check = f"log/syn_log.json"
+            docker_command_check_syn = ["docker", "exec", container_id, "sh", "-c", f"cat {path_syn_check} 2>/dev/null || true"]
+            try:
+                result = subprocess.run(docker_command_check_syn, capture_output=True, text=True, encoding="utf-8", timeout=10)
+            except Exception:
+                result = None
+            print("################# log_syn_data ##################")
+
+            if result and result.returncode == 0 and result.stdout.strip():
+                try:
+                    log_syn_data = json.loads(result.stdout)
+                except json.JSONDecodeError:
+                    log_syn_data = {"received": []}
+                for entry in log_syn_data.get("received",[]):
+                    if server_port is not None and entry.get("server_port") is not None and int(entry.get("server_port")) != int(server_port):
+                        continue
+                    if client_ip is not None and entry.get("client_ip") is not None and str(entry.get("client_ip") )!= str(client_ip):
+                        continue
+                    if server_ip and entry.get("server_ip", "") and str(entry.get("server_ip")) != str(server_ip):
+                        continue
+                    if client_port is not None and str(entry.get("client_port")) is not None and str(entry.get("client_port")) != str(client_port):
+                        continue
+                    return (True, "TCP SYN recieved on server")
+        
+        return (False, "") # Packet did not reach destination according to server logs
+
     def run_single_test(self, container_id_src, dst_ip, protocol, dst_port, container_id_dest):
         """
         Runs a single client test inside a container and returns the result.
@@ -89,6 +186,7 @@ class TestRunner:
                 }
                 return False, result_dict_warn
 
+        test_id = str(uuid.uuid4())
         command = [
             "docker", "exec", container_id_src,
             "python3",
@@ -97,7 +195,7 @@ class TestRunner:
             processed_dst_ip,
             protocol.lower(),
             dst_port,
-            "1", "2025", "0" 
+            test_id, "2025", "0" 
         ]
         
         try:
@@ -111,6 +209,23 @@ class TestRunner:
                 raise json.JSONDecodeError("The script output was empty.", "", 0)
 
             result_dict = json.loads(result.stdout)
+
+            if(not result_dict.get("server_response")):
+                (packet_arrived, message) = self._server_log_confirms_packet_in_container(
+                container_id=container_id_dest,
+                timestamp_teste=command[9],
+                test_id=test_id,
+                protocol=protocol,
+                server_ip=processed_dst_ip,
+                server_port=int(dst_port),
+                client_ip=result_dict.get("client_ip", None),
+                client_port=result_dict.get("client_port", None)
+                )
+                result_dict["packet_arrived"] = packet_arrived
+
+                result_dict["status_msg"] = message
+                result_dict["message"] = message
+
             return True, result_dict
 
         except Exception as e:
@@ -154,6 +269,10 @@ class TestRunner:
 
         elif not test_output.get("server_response"):
             network_flow = "Sent"
+            if test_output.get("packet_arrived", False) == True:
+                # if the packet was recieved on server, add this info into network_flow
+                if test_output.get("message") != "":
+                    network_flow = f"Sent/{test_output.get('message')}"
             if expected in ["no", "bloqueado"]:
                 result_status = "Pass"
                 tag = "yesFail"

@@ -2,6 +2,7 @@
 
 import subprocess
 import json
+import time
 from .docker_host import DockerHost
 
 class ContainerManager:
@@ -160,7 +161,8 @@ class ContainerManager:
 
     def start_server(self, host_id):
         """Starts the server.py script inside a container."""
-        cmd = ["docker", "exec", "-d", host_id, "/usr/local/bin/python", "./server.py"]
+        cmd = ["docker", "exec", "-d", host_id, "/usr/local/bin/python", "./core/server.py"]
+        # cmd = ["docker", "exec", "-d", host_id, "/usr/local/bin/python", "./server.py"]
         result = self._run_command(cmd)
         if result.returncode != 0:
             return (False, result.stderr)
@@ -257,7 +259,8 @@ class ContainerManager:
         return (True, "Script executed successfully.")
     
     def get_host_ports(self, host_id):
-        container_path = "/firewallTester/src/conf/ports.conf"
+        # container_path = "/firewallTester/src/conf/ports.conf"
+        container_path = "/app/config/ports.conf"
         cmd = ["docker", "exec", host_id, "cat", container_path]
         result = self._run_command(cmd)
         if result.returncode != 0:
@@ -282,7 +285,8 @@ class ContainerManager:
         except IOError as e:
             return (False, f"Failed to save local file: {e}")
 
-        container_path = "/firewallTester/src/conf/ports.conf"
+        # container_path = "/firewallTester/src/conf/ports.conf"
+        container_path = "/app/config/ports.conf"
         copy_result = self._run_command(["docker", "cp", local_ports_file_path, f"{host_id}:{container_path}"])
         if copy_result.returncode != 0:
             return (False, f"Failed to copy port file:\n{copy_result.stderr}")
