@@ -233,33 +233,33 @@ class FirewallTestsTab(QWidget):
                 popup = LoadingBar(title="Wait", message="Adding ports on hosts", time=3000)
                 popup.exec_()
 
-        self.progress_dialog = DraggableDialog("Running tests", "Cancel", 0, len(selected_items), self)
+        self.tree.clearSelection()
+        self.progress_dialog = DraggableDialog("Running tests", "Cancel", 0, 100, self)
         self.progress_dialog.setWindowTitle("Processing tests")
         self.progress_dialog.setWindowModality(Qt.WindowModal)
         self.progress_dialog.setMinimumDuration(0)
         self.progress_dialog.setAutoClose(False)
-        self.progress_dialog.show()           # força a janela a aparecer
-        QApplication.processEvents() 
 
-        for index, item in enumerate(selected_items, start=1):
-            _, container_id_src, _, dst_hostname, proto, _, dst_port, expected, _, _, _ = [
-                item.text(c) for c in range(item.columnCount())
-            ]
+        self.thread = QThread()
+        self.worker = TestWorker(selected_items, self.test_runner, self.hosts_map)
+        self.worker.moveToThread(self.thread)
 
-            self.progress_dialog.setLabelText(f"Testing {index}/{len(selected_items)}: {item.text(2)} -> {item.text(3)}")
-            self.progress_dialog.setValue(index)
+        def on_cancel():
+            self.worker.cancel()
+            self.progress_dialog.close()
 
-            destination_ip = self._find_ip_by_hostname(dst_hostname)
-            effective_port = "1" if proto.upper() == "ICMP" else dst_port
-            container_id_destination = self.hosts_map.get(dst_hostname, {}).get('id')
+        self.thread.started.connect(self.worker.run)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+        self.worker.item_tested.connect(self._update_tree_item)
+        self.worker.progress.connect(self._update_progress_dialog)
+        self.progress_dialog.canceled.connect(on_cancel)
+        self.thread.finished.connect(self.progress_dialog.close)
 
-            _, result_dict = self.test_runner.run_single_test(container_id_src, destination_ip, proto, effective_port, container_id_destination)
+        self.thread.start()
+        self.progress_dialog.exec_()
 
-            expected_back = "yes" if expected == "Allowed" else "no"
-            analysis, tag = self.test_runner.analyze_test_result(expected_back, result_dict)
-            self._paint_test_result(item, analysis, tag, clear_selection=False)
-
-        self.progress_dialog.close()
         self._clear_selection_and_reset_buttons()
         
     def _add_port_on_server(self, container_id: str, protocol: str, port: str): 
