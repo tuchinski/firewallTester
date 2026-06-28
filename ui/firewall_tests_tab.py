@@ -186,6 +186,7 @@ class FirewallTestsTab(QWidget):
         add_legend_item("lightblue", "Passed (Blocked)")
         add_legend_item("salmon", "Failed")
         add_legend_item("yellow", "Error")
+        add_legend_item("orange", "Port not open on server")
         legend_layout.addStretch(1)
 
         file_buttons_layout = QHBoxLayout()
@@ -291,7 +292,7 @@ class FirewallTestsTab(QWidget):
 
         color_map = {
             "yes": "lightgreen", "yesFail": "lightblue",
-            "no": "salmon", "error": "yellow"
+            "no": "salmon", "error": "yellow", "portNotOpen": "orange"
         }
         color = QColor(color_map.get(tag, "transparent"))
         for i in range(item.columnCount()):

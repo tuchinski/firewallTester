@@ -176,7 +176,7 @@ class TestRunner:
             is_port_open = self._list_open_ports(dst_port,protocol, container_id_dest)
             if not is_port_open:
                 result_dict_warn = {
-                    "status": "warning",
+                    "status": "portNotOpen",
                     "status_msg": "port is not open on destination container"
                 }
                 return False, result_dict_warn
@@ -251,7 +251,10 @@ class TestRunner:
         if test_output.get("status", "1") != '0':
             result_status = "ERROR"
             network_flow = "Not Sent"
-            tag = "error"
+            if test_output.get("status", "") != "":
+                tag = test_output.get("status")
+            else: 
+                tag = "error"
 
         elif test_output.get("server_response"):
             network_flow = "Sent/Received"
