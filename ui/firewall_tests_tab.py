@@ -11,7 +11,7 @@ import os
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QComboBox, QGroupBox, QGridLayout, QLineEdit,
     QRadioButton, QTreeWidget, QTreeWidgetItem,
-    QAbstractItemView, QProgressDialog, QMessageBox, QFileDialog, QDialog)
+    QAbstractItemView, QProgressDialog, QMessageBox, QFileDialog, QDialog, QApplication)
 from PyQt5.QtGui import QColor, QBrush
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QEvent
 import time
@@ -160,7 +160,7 @@ class FirewallTestsTab(QWidget):
         buttons_layout.addStretch(1)
 
         self.tree = QTreeWidget()
-        self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.header_labels = ["#","Container ID","Source","Destination","Protocol","Src Port","Dst Port",
             "Expected","Result","Flow","Data"
         ]
@@ -169,7 +169,6 @@ class FirewallTestsTab(QWidget):
         main_layout.addWidget(self.tree)
         self.tree.setColumnWidth(0, 40)
         self.tree.setColumnHidden(1, not self.config.get("show_container_id", False))
-        self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
         self.tree.viewport().installEventFilter(self)
 
         legend_box = QGroupBox("Test Legend")
@@ -218,45 +217,49 @@ class FirewallTestsTab(QWidget):
         selected_items = self.tree.selectedItems()
         if not selected_items:
             return
-        item = selected_items[0]
 
-        _, container_id_src, _, dst_hostname, proto, _, dst_port, expected, _, _, _ = [
-            item.text(c) for c in range(item.columnCount())
-        ]
-        
-        destination_ip = self._find_ip_by_hostname(dst_hostname)
-        
-        effective_port = "1" if proto.upper() == "ICMP" else dst_port
-
-        container_id_destination = self.hosts_map.get(dst_hostname, {}).get('id')
-        
-        _, result_dict = self.test_runner.run_single_test(container_id_src, destination_ip, proto, effective_port, container_id_destination)
-        
-        if result_dict['status'] == 'warning' and result_dict['status_msg'] == 'port is not open on destination container':
+        ports_not_open = self._check_ports_server(selected_items)
+        if ports_not_open:
             msg = QMessageBox(self)
             msg.setWindowTitle("Info")
-            msg.setText(f"The port is not open on destination host({dst_hostname}). Would you like to open this port on the host?")
+            msg.setText("There are unopened ports on some hosts. Would you like to open these ports before running the tests?")
             msg.setIcon(QMessageBox.Information)
             msg.addButton("Yes", QMessageBox.AcceptRole)
             msg.addButton("No", QMessageBox.RejectRole)
             result = msg.exec_()
             if result == QMessageBox.AcceptRole:
-                result, msg = self._add_port_on_server(container_id_destination, proto, effective_port)
-                if not result: 
-                    QMessageBox.warning(self, "Error", "Error while open port on server")
-                    print(f"Error while open port on server {dst_hostname}")
-                    print(msg)
-                else: 
-                    popup = LoadingBar(title="Wait", message=f"Adding port on host {dst_hostname}")
-                    popup.exec_()
-                    self._run_selected_test()
-                    return
+                self._open_ports_on_servers(ports_not_open)
+                popup = LoadingBar(title="Wait", message="Adding ports on hosts", time=3000)
+                popup.exec_()
 
+        self.progress_dialog = DraggableDialog("Running tests", "Cancel", 0, len(selected_items), self)
+        self.progress_dialog.setWindowTitle("Processing tests")
+        self.progress_dialog.setWindowModality(Qt.WindowModal)
+        self.progress_dialog.setMinimumDuration(0)
+        self.progress_dialog.setAutoClose(False)
+        self.progress_dialog.show()           # força a janela a aparecer
+        QApplication.processEvents() 
 
-        expected_back = "yes" if expected == "Allowed" else "no"
-        analysis, tag = self.test_runner.analyze_test_result(expected_back, result_dict)
+        for index, item in enumerate(selected_items, start=1):
+            _, container_id_src, _, dst_hostname, proto, _, dst_port, expected, _, _, _ = [
+                item.text(c) for c in range(item.columnCount())
+            ]
 
-        self._paint_test_result(item, analysis, tag)
+            self.progress_dialog.setLabelText(f"Testing {index}/{len(selected_items)}: {item.text(2)} -> {item.text(3)}")
+            self.progress_dialog.setValue(index)
+
+            destination_ip = self._find_ip_by_hostname(dst_hostname)
+            effective_port = "1" if proto.upper() == "ICMP" else dst_port
+            container_id_destination = self.hosts_map.get(dst_hostname, {}).get('id')
+
+            _, result_dict = self.test_runner.run_single_test(container_id_src, destination_ip, proto, effective_port, container_id_destination)
+
+            expected_back = "yes" if expected == "Allowed" else "no"
+            analysis, tag = self.test_runner.analyze_test_result(expected_back, result_dict)
+            self._paint_test_result(item, analysis, tag, clear_selection=False)
+
+        self.progress_dialog.close()
+        self._clear_selection_and_reset_buttons()
         
     def _add_port_on_server(self, container_id: str, protocol: str, port: str): 
         '''
@@ -271,21 +274,13 @@ class FirewallTestsTab(QWidget):
             tuple: A tuple containing a boolean indicating success and a message.
         '''
         ports_on_host = self.container_manager.get_host_ports(container_id)
-        port_to_open = (protocol.upper(), port)
-
-        if port_to_open in ports_on_host:
-            # if port is already on ports.config file, just restart server
-            self.container_manager.stop_server(container_id)
-            self.container_manager.start_server(container_id)
-            return (True, "port already on config file")
-
-        ports_on_host.append(port_to_open)
+        ports_on_host.append((protocol,port))
 
         local_path = self.config.get("server_ports_file")
         return self.container_manager.update_host_ports(container_id, ports_on_host, local_path)
 
     
-    def _paint_test_result(self, item, analysis_dict, tag):
+    def _paint_test_result(self, item, analysis_dict, tag, clear_selection=True):
         print(f"\nResult: {analysis_dict['result']}")
         print(f"Container ID: {item.text(1)}")
         print(f"Flow: {analysis_dict['data']}")
@@ -302,7 +297,8 @@ class FirewallTestsTab(QWidget):
         for i in range(item.columnCount()):
             item.setBackground(i, QBrush(color))
         
-        self._clear_selection_and_reset_buttons()
+        if clear_selection:
+            self._clear_selection_and_reset_buttons()
 
     def _update_tree_item(self, item, analysis_dict, tag):
         if self.progress_dialog and not self.progress_dialog.isVisible():
