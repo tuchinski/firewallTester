@@ -98,7 +98,6 @@ class TestRunner:
         """Reads the server log from a container and checks whether the packet arrived."""
         log_path = f"log/{timestamp_teste}/server_log.json"
         deadline = time.monotonic() + wait_seconds
-        print("start _server_log_confirms_packet_in_container")
 
         while time.monotonic() < deadline:
             docker_command = ["docker", "exec", container_id, "sh", "-c", f"cat {log_path} 2>/dev/null || true"]
@@ -125,17 +124,13 @@ class TestRunner:
                     return (True, "Received by the server")
 
             time.sleep(0.2)
-        print("saiu do while")
-        print(f"protocol: {protocol}")
         if protocol.lower() == 'tcp':
-            print("entrou no ifzera")
             path_syn_check = f"log/syn_log.json"
             docker_command_check_syn = ["docker", "exec", container_id, "sh", "-c", f"cat {path_syn_check} 2>/dev/null || true"]
             try:
                 result = subprocess.run(docker_command_check_syn, capture_output=True, text=True, encoding="utf-8", timeout=10)
             except Exception:
                 result = None
-            print("################# log_syn_data ##################")
 
             if result and result.returncode == 0 and result.stdout.strip():
                 try:

@@ -282,7 +282,6 @@ class FirewallTestsTab(QWidget):
         ports_on_host.append(port_to_open)
 
         local_path = self.config.get("server_ports_file")
-        print(f"container_id: {container_id}")
         return self.container_manager.update_host_ports(container_id, ports_on_host, local_path)
 
     
@@ -360,7 +359,6 @@ class FirewallTestsTab(QWidget):
             msg.addButton("No", QMessageBox.RejectRole)
             result = msg.exec_()
             if result == QMessageBox.AcceptRole:
-                print("aceitou")
                 self._open_ports_on_servers(result_check_ports_not_open)
                 popup = LoadingBar(title="Wait", message=f"Adding port on hosts", time=3000)
                 popup.exec_()
