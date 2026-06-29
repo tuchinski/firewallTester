@@ -481,3 +481,47 @@ Você deve ter recebido uma cópia da Licença Pública Geral GNU junto com este
 ### **Luiza Batista Basseto**
 * **Instituição:** UTFPR – Campo Mourão
 * **Email:** [luizabasseto.1@gmail.com](mailto:luizabasseto.1@gmail.com)
+
+## Alterações realizadas
+
+Este fork buscou resolver alguns problemas frequentemente encontrados pelos alunos, ao utilizar esta ferramenta. Iniciamente, foram resolvidos os seguintes apontamentos:
+### Selecionar múltiplos testes para execução:
+- Atualmente, só era possível executar todos os testes de firewall existentes ou somente um. Agora o usuário pode selecionar múltiplos testes para serem executados, melhorando assim a experiência de uso do programa.
+
+### Verificação da porta no destino do teste realizado
+- Um problema frequente enfrentado era a falha do teste por conta da porta a ser testada não estar aberta no servidor de destino, fazendo com que o teste retornasse um resultado que não era correto. 
+- Agora antes de executar o teste, é verificado se a porta a ser testada está aberta e ativa no servidor, e caso não esteja, uma mensagem é exibida ao usuário, informando esta situação e perguntando se deseja abrir esta porta no servidor de destino antes de executar o teste selecionado.
+- No caso de testes em lotes (executar todos os testes ou testes selecionados pelo usuário), também é feita a mesma verificação, caso existam portas não abertas que estão contidas nos testes.
+
+### Verificar se o pacote de teste chegou ao servidor
+- A execução dos testes verificava apenas se um pacote chegou e foi respondido corretamente pelo servidor, mas sem conseguir verificar se este pacote de teste chegou corretamente no servidor.
+- Agora todos os pacotes de teste que chegam ao servidor são salvos em um arquivo e após a execução do teste, caso não tenha recebido uma resposta do servidor testado, é feita uma análise destes logs, para verificar se os pacotes chegaram ao destino corretamente, ou foram bloqueados antes. 
+- Atualmente é feita a verificação para os testes que usam os protocolos TCP e UDP, sendo que para o protocolo TCP é salvo a primeira requisição SYN recebida pelo servidor.
+
+
+### Passos para utilizar as implementações deste fork
+- Seguir o [passo a passo](https://github.com/tuchinski/firewallTester/tree/main#instala%C3%A7%C3%A3o-do-firewalltester) para instalação do firewallTester, seja por VM ou instalação manual
+- Fazer o clone do projeto
+    - Recomendado fazer o clone em uma pasta nova, porque já existe uma pasta com o nome firewallTester, que contém a versão original, e causará conflito
+    - `git clone https://github.com/tuchinski/firewallTester`
+- Fazer o build da imagem docker que será utilizada para os hosts no GNS3
+  - Entrar dentro da pasta `firewallTester` do projeto que foi clonado
+  - Executar o comando: `docker build -f docker_infra/Dockerfile -t firewall_tester:latest `
+- Adicionar no GNS3 as appliances que utilizam a imagem docker gerada
+    - Dentro do GNS3, ir na opção `File > Import Appliance`
+    - Navegar até a pasta que está o clone > encontrar os appliances dentro da pasta `gns3_projects` 
+    - Importar `new_firewall.gns3a` e `new_host.gns3a` 
+    - Os novos appliances estarão disponíveis na aba "End Devices" com os nomes `ftFirewall` e `ftHost`
+    - Para utilizar as implementações realizadas neste fork, é necessário utilizar estes 2 devices, caso contrário, podem acontecer erros ou os testes não serem executados de maneira correta
+- Executar a nova versão do FirewallTester
+  - Dentro da pasta clonada, executar o comando `python3 main.py` para executar a versão do FirewallTester com as implementações deste fork.
+
+#### Lista detalhada das implementações realizadas neste fork do projeto
+- Adição de uma barra de carregamento na interface para indicar o processo de reinicialização dos servidores.
+- Validação automática da disponibilidade de portas no servidor antes da execução de testes individuais e em lote, reduzindo falhas causadas por serviços não acessíveis.
+- Adição de verificação de recebimento de pacotes no servidor, aprimorando a confirmação de fluxo de rede e a precisão dos resultados.
+- Melhoria no fluxo de execução com suporte à seleção múltipla de testes e alteração no método de execução dos testes selecionados.
+- Ajustes visuais na interface para indicar quando uma porta não está aberta no servidor, facilitando a interpretação dos resultados.
+- Refinamentos no gerenciamento de containers e integração do gerenciamento de containers na aba de firewall, além de validações adicionais antes da execução em massa.
+- Correções de estabilidade para o início do servidor em cenários com conexões em estado TIME_WAIT.
+- Inclusão de artefatos auxiliares para cenários de teste, como arquivos de configuração e appliances GNS3, além de ajustes em dependências relacionadas à execução dos testes.
