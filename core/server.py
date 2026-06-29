@@ -465,6 +465,7 @@ def main():
     threads = []
     ports_file = "config/ports.conf"
     tuples = read_ports_from_file(ports_file)
+    tuples = list(set(tuples)) # removing duplicates
     print(f"Starting servers with ports present in file: {ports_file} - This file must contain lines with port/protocol, example 80/tcp.")
     if tuples:
         print("Tuples read from file:")
