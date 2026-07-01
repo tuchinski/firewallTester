@@ -447,6 +447,14 @@ class FirewallTestsTab(QWidget):
             selected_items = self.tree.selectedItems()
             if not selected_items:
                 return
+            if len(selected_items) > 1:
+                QMessageBox.information(
+                    self,
+                    "Select one item",
+                    "Please select only one test item to edit."
+                )
+                return
+
             self.is_editing = True
             self.btn_edit.setText("Save edit")
             self.btn_add.setEnabled(False)
